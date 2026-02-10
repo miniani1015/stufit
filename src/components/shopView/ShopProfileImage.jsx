@@ -1,4 +1,4 @@
-import { imageItems } from '../../../shopItems';
+import { imageItems } from './shopItems';
 
 function ShopProfileImage({ wishlistScope, isWishlisted, isPurchased, toggleWishlist, onPurchase }) {
     const categoryLabel = '프로필 이미지';

@@ -1,4 +1,4 @@
-import { bgItems } from '../../../shopItems';
+import { bgItems } from './shopItems';
 
 function ShopProfileBG({ wishlistScope, isWishlisted, isPurchased, toggleWishlist, onPurchase }) {
     const categoryLabel = '프로필 배경';

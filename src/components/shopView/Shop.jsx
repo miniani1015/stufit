@@ -4,7 +4,7 @@ import ShopProfileFrame from './ShopProfileFrame';
 import ShopProfileBG from './ShopProfileBG';
 import ShopProfileImage from './ShopProfileImage';
 import ShopWishlist from './ShopWishlist';
-import { bgItems, frameItems, imageItems, shopItems } from '../../../shopItems';
+import { bgItems, frameItems, imageItems, shopItems } from './shopItems';
 import ShopSidebar from './ShopSidebar';
 import CustomAlertModal from '../modal/CustomAlertModal';
 import '../shopView/Shop.css';

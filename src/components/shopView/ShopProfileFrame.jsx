@@ -1,4 +1,4 @@
-import { frameItems } from '../../../shopItems';
+import { frameItems } from './shopItems';
 
 function ShopProfileFrame({ wishlistScope, isWishlisted, isPurchased, toggleWishlist, onPurchase }) {
     const categoryLabel = '프로필 테두리';

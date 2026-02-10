@@ -1,4 +1,4 @@
-import { shopItems } from '../../../shopItems';
+import { shopItems } from './shopItems';
 
 function ShopAll({ wishlistScope, isWishlisted, isPurchased, toggleWishlist, onPurchase }) {
     const items = shopItems;
