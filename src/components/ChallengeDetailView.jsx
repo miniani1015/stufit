@@ -14,6 +14,10 @@ function ChallengeDetailView({ challenge, onClose }) {
     const [submitLoading, setSubmitLoading] = useState(false);
     const [elapsedDays, setElapsedDays] = useState(0);
     const [remainingDays, setRemainingDays] = useState(0);
+    const [alertMessage, setAlertMessage] = useState('');
+    const [miniGameOpen, setMiniGameOpen] = useState(false);
+    const [miniGameMessage, setMiniGameMessage] = useState('공동 1등이 발생했어요. 미니게임으로 최종 1등을 결정합니다!');
+    const [pendingBetScore, setPendingBetScore] = useState(0);
 
     useEffect(() => {
         document.body.classList.add('modal-open');
@@ -141,7 +145,134 @@ function ChallengeDetailView({ challenge, onClose }) {
     // 챌린지 나가기 성공 시 호출
     const handleLeaveSuccess = () => {
         setFinalModalOpen(false);
+        setAlertMessage("챌린지를 완전히 포기했습니다.");
         setAlertOpen(true);
+    };
+
+    const getProgressRanking = async () => {
+        const username = localStorage.getItem('username');
+        if (!username || !challenge?.challenge_id) {
+            return { username: null, topUsers: [], topScore: 0 };
+        }
+
+        const response = await fetch(`/api/challenges/${challenge.challenge_id}/progress`, {
+            headers: { 'X-Username': username }
+        });
+
+        if (!response.ok) {
+            return { username, topUsers: [], topScore: 0 };
+        }
+
+        const result = await response.json();
+        const rows = Array.isArray(result?.data) ? result.data : [];
+        const scoreByUser = rows.reduce((acc, row) => {
+            const key = row?.username;
+            if (!key) return acc;
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+
+        const ranking = Object.entries(scoreByUser)
+            .map(([name, score]) => ({ name, score }))
+            .sort((a, b) => b.score - a.score);
+
+        if (ranking.length === 0) {
+            return { username, topUsers: [], topScore: 0 };
+        }
+
+        const topScore = ranking[0].score;
+        const topUsers = ranking
+            .filter((item) => item.score === topScore)
+            .map((item) => item.name);
+
+        return { username, topUsers, topScore };
+    };
+
+    const handleCompleteChallenge = async () => {
+        try {
+            const rawBetInput = window.prompt('베팅 점수를 입력하세요. (미베팅은 0)', '0');
+            const parsedBet = Math.max(0, Number(rawBetInput ?? 0) || 0);
+            setPendingBetScore(parsedBet);
+
+            const { username, topUsers } = await getProgressRanking();
+            const isTieForFirst = topUsers.length >= 2;
+            const isCurrentUserInTopTie = Boolean(username && topUsers.includes(username));
+
+            if (isTieForFirst && isCurrentUserInTopTie) {
+                setMiniGameMessage(`공동 1등 (${topUsers.join(', ')}) 입니다. 미니게임으로 최종 순위를 결정하세요!`);
+                setMiniGameOpen(true);
+                return;
+            }
+
+            await settleChallenge(parsedBet, false);
+        } catch (error) {
+            console.error('챌린지 종료 처리 오류:', error);
+            setAlertMessage('챌린지 종료 처리 중 오류가 발생했습니다.');
+            setAlertOpen(true);
+        }
+    };
+
+    const settleChallenge = async (betScore, tieBreakerWinner) => {
+        const username = localStorage.getItem('username');
+        if (!username || !challenge?.challenge_id) {
+            setAlertMessage('로그인이 필요합니다.');
+            setAlertOpen(true);
+            return;
+        }
+
+        const response = await fetch(`/api/challenges/${challenge.challenge_id}/finalize`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Username': username
+            },
+            body: JSON.stringify({ betScore, tieBreakerWinner })
+        });
+
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+            setAlertMessage(payload?.message || '종료 정산에 실패했습니다.');
+            setAlertOpen(true);
+            return;
+        }
+
+        const data = payload?.data || {};
+        const scoreReward = Number(data?.scoreReward) || 0;
+        const pointReward = Number(data?.pointReward) || 0;
+        const rank = Number(data?.rank) || 0;
+
+        if (typeof data?.points === 'number') {
+            localStorage.setItem('points', String(data.points));
+            window.dispatchEvent(new CustomEvent('pointsUpdated', { detail: { points: data.points } }));
+        }
+
+        if (scoreReward > 0) {
+            setAlertMessage(`정산 완료! ${rank}등 보상으로 +${pointReward}P, 베팅 몰빵 점수 +${scoreReward}점 획득`);
+        } else {
+            setAlertMessage(`정산 완료! ${rank}등 보상으로 +${pointReward}P 획득 (점수 보상 없음)`);
+        }
+        setAlertOpen(true);
+    };
+
+    const resolveMiniGame = (userPick) => {
+        const options = ['가위', '바위', '보'];
+        const computerPick = options[Math.floor(Math.random() * options.length)];
+
+        const userIndex = options.indexOf(userPick);
+        const computerIndex = options.indexOf(computerPick);
+
+        if (userIndex === computerIndex) {
+            setMiniGameMessage(`무승부! (${userPick} vs ${computerPick}) 다시 선택해주세요.`);
+            return;
+        }
+
+        const userWin =
+            (userPick === '가위' && computerPick === '보') ||
+            (userPick === '바위' && computerPick === '가위') ||
+            (userPick === '보' && computerPick === '바위');
+
+        setMiniGameOpen(false);
+        settleChallenge(pendingBetScore, userWin);
     };
 
     // Props 기본값 설정
@@ -351,7 +482,7 @@ function ChallengeDetailView({ challenge, onClose }) {
 
                         <div className="detail-actions">
                             <button className="btn-giveup" onClick={giveupHandler}>give up</button>
-                            <button className="btn-complete">complete</button>
+                            <button className="btn-complete" onClick={handleCompleteChallenge}>complete</button>
                         </div>
                     </div>
                 </div>
@@ -367,7 +498,7 @@ function ChallengeDetailView({ challenge, onClose }) {
             )}
             {alertOpen && (
                 <CustomAlertModal
-                    message="챌린지를 완전히 포기했습니다."
+                    message={alertMessage || "알림입니다."}
                     onClose={() => {
                         setAlertOpen(false);
                         if (onClose) {
@@ -375,6 +506,20 @@ function ChallengeDetailView({ challenge, onClose }) {
                         }
                     }}
                 />
+            )}
+            {miniGameOpen && (
+                <div className="popup-modal" style={{ zIndex: 1200 }}>
+                    <div className="popup-overlay" onClick={() => setMiniGameOpen(false)}></div>
+                    <div className="popup-content" style={{ maxWidth: '520px', textAlign: 'center' }}>
+                        <h2>공동 1등 미니게임</h2>
+                        <p style={{ color: '#555', marginBottom: '20px' }}>{miniGameMessage}</p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                            <button className="start-challenge-btn" onClick={() => resolveMiniGame('가위')}>가위</button>
+                            <button className="start-challenge-btn" onClick={() => resolveMiniGame('바위')}>바위</button>
+                            <button className="start-challenge-btn" onClick={() => resolveMiniGame('보')}>보</button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     );
